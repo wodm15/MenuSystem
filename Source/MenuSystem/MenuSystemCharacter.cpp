@@ -29,6 +29,9 @@ AMenuSystemCharacter::AMenuSystemCharacter()
 	FindSessionsCompleteDelegate = FOnFindSessionsCompleteDelegate::CreateUObject(
 		this, &ThisClass::OnFindSessionsComplete
 	);
+	JoinSessionCompleteDelegate = FOnJoinSessionCompleteDelegate::CreateUObject(
+		this, &ThisClass::OnJoinSessionComplete
+	);
 
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
@@ -211,6 +214,8 @@ void AMenuSystemCharacter::OnCreateSessionComplete(FName SessionName, bool bWasS
 }
 void AMenuSystemCharacter::OnFindSessionsComplete(bool bWasSucessful)
 {
+	if(!OnlineSessionInterface.IsValid()) return;
+
 	for(auto Result : SessionSearch->SearchResults)
 	{
 		FString id = Result.GetSessionIdStr();
@@ -236,12 +241,51 @@ void AMenuSystemCharacter::OnFindSessionsComplete(bool bWasSucessful)
 					-1,
 					15.f,
 					FColor::Cyan,
-					FString::Printf(TEXT("Joining Match Type: %s"), *MatchType);
+					FString::Printf(TEXT("Joining Match Type: %s"), *MatchType)
 				);
 			}
 		}
+
+		OnlineSessionInterface->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
+
+		Result.Session.SessionSettings.bUseLobbiesIfAvailable = true;
+    	Result.Session.SessionSettings.bUsesPresence = true;
+
+		const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+		const FUniqueNetIdRepl PlayerId = LocalPlayer->GetPreferredUniqueNetId();
+
+		OnlineSessionInterface->JoinSession(*PlayerId, NAME_GameSession, Result);
+
+
 	}
 }
+
+
+void AMenuSystemCharacter::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
+{
+	if(!OnlineSessionInterface.IsValid()) return;
+
+	FString Address;
+	if(OnlineSessionInterface->GetResolvedConnectString(NAME_GameSession, Address))
+	{
+		if(GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				15.f,
+				FColor::Yellow,
+				FString::Printf(TEXT("Connect String: %s"), *Address)
+			);
+		}
+
+		APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
+		if(PlayerController)
+		{
+			PlayerController->ClientTravel(Address, ETravelType::TRAVEL_Absolute);
+		}
+	}
+}
+
 
 void AMenuSystemCharacter::Move(const FInputActionValue& Value)
 {
